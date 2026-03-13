@@ -30,15 +30,36 @@ import Control.Monad.IO.Class
 import qualified Data.IntSet as Set
 import Control.Monad.Trans.Writer.Lazy (tell, WriterT(..), execWriterT)
 import Control.Monad.Exception (MonadException)
-import Control.Applicative (Applicative, Alternative, (<|>))
-import Control.Monad.Trans.Class (lift)
+import Control.Applicative (Applicative, Alternative, (<|>), empty)
+import Control.Monad.Trans.Class (lift, MonadTrans(..))
 import Data.Maybe (fromJust, isJust, isNothing)
 import Control.Monad (MonadPlus, when)
-import Control.Monad.Trans.List (ListT(..))
 import Data.Monoid (All(..), mempty)
 import Data.Either
 import Control.Monad.Trans.Reader
 import Data.List (find)
+
+-- | Minimal re-implementation of ListT (removed from transformers >= 0.6)
+newtype ListT m a = ListT { runListT :: m [a] }
+
+instance (Monad m) => Functor (ListT m) where
+    fmap f (ListT m) = ListT $ fmap (map f) m
+
+instance (Monad m) => Applicative (ListT m) where
+    pure a = ListT $ return [a]
+    ListT f <*> ListT x = ListT $ do { fs <- f; xs <- x; return [g y | g <- fs, y <- xs] }
+
+instance (Monad m) => Monad (ListT m) where
+    ListT m >>= k = ListT $ do { a <- m; b <- mapM (runListT . k) a; return (concat b) }
+
+instance (Monad m) => Alternative (ListT m) where
+    empty = ListT $ return []
+    ListT a <|> ListT b = ListT $ do { x <- a; y <- b; return (x ++ y) }
+
+instance (Monad m) => MonadPlus (ListT m)
+
+instance MonadTrans ListT where
+    lift m = ListT $ fmap (:[]) m
 
 data ShaderState s = ShaderState Int (RenderIOState s)
 
